@@ -76,6 +76,23 @@ describe("Escrow", function () {
 						"0x0000000000000000000000000000000000000000"
 					);
 			});
+
+			it("Should be reverted if the payment is too small", async function () {
+				const { escrow, payer, payee, lockedAmount, deadline, daoDeadline } =
+					await loadFixture(deployEscrow);
+				await expect(
+					escrow
+						.connect(payer)
+						.createEscrow(
+							payee.address,
+							"0x0000000000000000000000000000000000000000",
+							lockedAmount / 10n,
+							deadline,
+							daoDeadline,
+							{ value: lockedAmount / 10n }
+						)
+				).to.be.revertedWith("Escrow amount too small");
+			});
 		});
 	});
 });
