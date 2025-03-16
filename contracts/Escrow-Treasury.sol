@@ -10,6 +10,7 @@ interface IERC20Metadata {
 
 contract HyperBoreEscrow is ReentrancyGuard {
     address public daoMultisig;
+    address public treasury;
     uint256 public nextEscrowId;
     uint16 public basisPointFee;
     uint8 private constant DAO_FEE_PERCENT = 5; // 5% cut for the DAO in disputed cases
@@ -43,16 +44,13 @@ contract HyperBoreEscrow is ReentrancyGuard {
     event DisputeResolved(uint256 indexed escrowId, uint8 newStatus);
     event DAOAddressChanged(address indexed daoMultisig);
     event BasisPointFeeChanged(uint16 indexed basisPointFee);
+    event TreasuryAddressChanged(address indexed treasury);
 
     constructor(address _daoMultisig) {
         require(_daoMultisig != address(0), "Invalid multisig address");
         daoMultisig = _daoMultisig;
+        treasury = _daoMultisig;
         basisPointFee = 50;
-    }
-
-    modifier onlyDAO() {
-        require(msg.sender == daoMultisig, "Uninvolved user");
-        _;
     }
 
     modifier escrowExists(uint256 _escrowId) {
@@ -60,8 +58,18 @@ contract HyperBoreEscrow is ReentrancyGuard {
         _;
     }
 
+    modifier onlyDAO() {
+        require(msg.sender == daoMultisig, "Uninvolved user");
+        _;
+    }
+
+    function updateTreasury(address _newTreasury) external onlyDAO {
+        require(_newTreasury != address(0), "Invalid treasury address");
+        treasury = _newTreasury;
+        emit TreasuryAddressChanged(_newTreasury);
+    }
+
     function updateBasisPointFee(uint16 _newBasisPointFee) external onlyDAO {
-        // sensible ranges for bps
         require(_newBasisPointFee >= 10, "BPFee too small");
         require(_newBasisPointFee <= 500, "BPFee too large");
         basisPointFee = _newBasisPointFee;
@@ -71,7 +79,7 @@ contract HyperBoreEscrow is ReentrancyGuard {
     function updateDAOMultisig(address _newMultisig) external onlyDAO {
         require(_newMultisig != address(0), "Can't burn contract");
         daoMultisig = _newMultisig;
-       emit DAOAddressChanged(_newMultisig);
+        emit DAOAddressChanged(_newMultisig);
     }
 
     function createEscrow(
@@ -86,12 +94,12 @@ contract HyperBoreEscrow is ReentrancyGuard {
         require(_daoDeadline > _deadline, "Invalid DAO deadline");
         
         if (_token == address(0)) {
-            require(_amount >= 1e16, "Escrow amount too small"); // 0.01 ETH Minimum for ETH
+            require(_amount >= 1e16, "Escrow amount too small");
             require(msg.value == _amount, "Incorrect ETH deposit");
         } else {
             require(msg.value == 0, "ETH not needed for token escrow");
             uint8 decimals = IERC20Metadata(_token).decimals();
-            uint256 coinMinAmount = decimals >= 2 ? 10 ** (decimals - 2) : 1; // Ensure safe calculation
+            uint256 coinMinAmount = decimals >= 2 ? 10 ** (decimals - 2) : 1;
             require(_amount >= coinMinAmount, "Escrow amount too small");
             IERC20(_token).safeTransferFrom(msg.sender, address(this), _amount);
         }
@@ -101,7 +109,7 @@ contract HyperBoreEscrow is ReentrancyGuard {
             payee: _payee,
             token: _token,
             amount: _amount,
-            status: 0, // Default status
+            status: 0,
             deadline: _deadline,
             daoDeadline: _daoDeadline,
             createdAt: block.timestamp
@@ -120,12 +128,6 @@ contract HyperBoreEscrow is ReentrancyGuard {
         escrow.status = 3;
         emit DisputeRaised(_escrowId);
     }
-
-    /**
-     * Requiring the dao to elevate disputes is a show
-     * of trust in the users of our escrow - word is bond,
-     * disputes should be exceedingly rare.
-     */
 
     function daoDispute(uint256 _escrowId) external escrowExists(_escrowId) onlyDAO {
         Escrow storage escrow = escrows[_escrowId];
@@ -166,7 +168,7 @@ contract HyperBoreEscrow is ReentrancyGuard {
         require(msg.sender == escrow.payer, "Only payer");
         require(escrow.status == 0, "Escrow not active");
         require(block.timestamp > escrow.deadline, "Deadline not passed");
-        escrow.status = 2; // Transition to "Returned"
+        escrow.status = 2;
     }
 
     function withdraw(uint256 _escrowId) external payable nonReentrant escrowExists(_escrowId) {
@@ -198,21 +200,20 @@ contract HyperBoreEscrow is ReentrancyGuard {
         }
         
         if (escrow.token == address(0)) {
-            // payment is in ETH
             if (escrow.status == 4 || escrow.status == 5) {
-                (bool daoFeeSuccess, ) = payable(daoMultisig).call{value: daoFee}("");
+                (bool daoFeeSuccess, ) = payable(treasury).call{value: daoFee}("");
                 require(daoFeeSuccess, "Dao Fee not paid");
             } else if (escrow.status != 3) {
-                (bool daoTaxSuccess, ) = payable(daoMultisig).call{value: daoTax}("");
+                (bool daoTaxSuccess, ) = payable(treasury).call{value: daoTax}("");
                 require(daoTaxSuccess, "Dao Tax not paid");
             }
-                (bool recipientSuccess, ) = payable(recipient).call{value: amount}("");
-                require(recipientSuccess, "Failed to release funds");
+            (bool recipientSuccess, ) = payable(recipient).call{value: amount}("");
+            require(recipientSuccess, "Failed to release funds");
         } else {
             if (escrow.status == 4 || escrow.status == 5) {
-                IERC20(escrow.token).safeTransfer(daoMultisig, daoFee);
+                IERC20(escrow.token).safeTransfer(treasury, daoFee);
             } else if (escrow.status != 3) {
-                IERC20(escrow.token).safeTransfer(daoMultisig, daoTax);
+                IERC20(escrow.token).safeTransfer(treasury, daoTax);
             }
             IERC20(escrow.token).safeTransfer(recipient, amount);
         }

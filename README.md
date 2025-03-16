@@ -10,6 +10,10 @@ HyperBoreEscrow is a smart contract for managing escrow transactions on ethereum
 - Configurable basis point fee for DAO.
 - If DAO fails to rule, funds are returned to depositer.
 
+## Treasury Variant
+
+There is another contract in this repo, `Escrow-Treasury`, that divorces payment and contract management. The managing DAO can indicate a treasury address for the purposes of receiving fees, otherwise, contracts are identical.
+
 ## Tooling
 
 - This contract uses Hardhat for Testing and Ignition for deployment.
