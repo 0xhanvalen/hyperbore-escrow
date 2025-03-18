@@ -13,7 +13,6 @@ contract HyperBoreEscrow is ReentrancyGuard {
     uint256 public nextEscrowId;
     uint16 public basisPointFee;
     uint8 private constant DAO_FEE_PERCENT = 5; // 5% cut for the DAO in disputed cases
-    
     /**
         * Status Lookup Table
         * 0 - Default, funds are locked and not in dispute
@@ -23,7 +22,6 @@ contract HyperBoreEscrow is ReentrancyGuard {
         * 4 - Disputed to Released, payee may recover funds, shares funds with DAO multisig
         * 5 - Disputed to Returned, payer may recover funds, shares funds with DAO multisig
     */
-
     struct Escrow {
         address payer;
         address payee;
@@ -34,7 +32,6 @@ contract HyperBoreEscrow is ReentrancyGuard {
         uint256 daoDeadline; // When the DAO must rule by
         uint256 createdAt; // Timestamp of escrow creation
     }
-
     mapping(uint256 => Escrow) public escrows;
 
     event EscrowCreated(uint256 indexed escrowId, address indexed payer, address indexed payee, uint256 amount, address token);
